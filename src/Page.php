@@ -3,12 +3,12 @@
 namespace Ja\Notion;
 
 use Carbon\Carbon;
-use Exception;
 use Illuminate\Support\Str;
 
 use Ja\Notion\Support\Collection;
 use Ja\Notion\Exceptions\NotionException;
 use Ja\Notion\Objects\NotionObject;
+use Ja\Notion\Support\Notion;
 
 class Page extends NotionObject
 {
@@ -56,15 +56,27 @@ class Page extends NotionObject
             collect($result['properties'])
                 ->map(function ($value, $key) {
 
-                    if (in_array($value['type'], ['title', 'rich_text'])) {
-                        $value = $value[$value['type']][0]['plain_text'] ?? '';
-                    } else if (in_array($value['type'], ['number'])) {
-                        $value = $value[$value['type']];
-                    } else if ($value[$value['type']] !== null) {
-                        $value = $value[$value['type']]['name'];
+                    $typeName = $value['type'];
+                    $typeValue = $value[$value['type']];
+
+                    if (in_array($typeName, ['title', 'rich_text'])) {
+
+                        $value = $typeValue[0]['plain_text'] ?? '';
+
+                    } else if (in_array($typeName, ['number'])) {
+
+                        $value = $typeValue;
+
+                    } else if ($typeValue !== null) {
+
+                        $value = $typeValue['name'];
+
+                    } else {
+
+                        $value = null;
                     }
                     
-                    return [Str::camel($key) => $value];
+                    return [Str::lower($key) => $value];
                 })
                 ->collapse()
                 ->all()
@@ -82,7 +94,7 @@ class Page extends NotionObject
         );
     }
 
-    public function content(): string|null
+    protected function getContent(): string|null
     {
         $blocks = $this->blocks();
 
@@ -93,22 +105,22 @@ class Page extends NotionObject
         $html = '';
         $openTag = null;
         
-        foreach ($this->blocks as $block) {
+        foreach ($blocks as $block) {
 
-            if (!$openTag && $block['type'] === 'bulleted_list_item') {
-                $openTag = $block['type'];
+            if (!$openTag && $block->type === 'bulleted_list_item') {
+                $openTag = $block->type;
                 $html.= '<ul>';
             }
 
-            if (!$openTag && $block['type'] === 'numbered_list_item') {
-                $openTag = $block['type'];
+            if (!$openTag && $block->type === 'numbered_list_item') {
+                $openTag = $block->type;
                 $html.= '<ol>';
             }
 
-            $html.= (new Block($block))->toHtml();
+            $html.= $block->toHtml();
 
 
-            if (!$openTag || $openTag === $block['type']) {
+            if (!$openTag || $openTag === $block->type) {
                 continue;
             }
 
@@ -128,21 +140,14 @@ class Page extends NotionObject
 
     public function blocks(): Collection
     {
-        $blocks = $this->api->request(
-            Block::endpoint(['pageId' => $this->pageId])
+        $blocks = (new Notion)->results(
+            endpoint: Block::endpoint(['pageId' => $this->id]),
+            data: ['page_size' => 100],
+            method: 'get'
         );
 
         $blocks = new Collection($blocks ?: []);
 
         return $blocks->map(fn ($result) => new Block($result));
-    }
-
-    public static function __callStatic($name, $arguments)
-    {
-        if ($name === 'blocks') {
-            return (new self)->blocks(...$arguments);
-        }
-
-        return static::$name(...$arguments);
     }
 }

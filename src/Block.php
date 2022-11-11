@@ -5,12 +5,11 @@ namespace Ja\Notion;
 use Ja\Notion\Support\Notion;
 use Ja\Notion\Support\Collection;
 use Ja\Notion\Exceptions\NotionException;
+use Ja\Notion\Objects\NotionObject;
 use Ja\Notion\Objects\Traits\Findable;
 
-class Block
+class Block extends NotionObject
 {
-    use Findable;
-
     public static function endpoint(array $params): string
     {
         if (isset($params['id'])) {
@@ -28,7 +27,7 @@ class Block
 
     public function toHtml()
     {
-        $children = $this->result[$this->type]['rich_text'];
+        $children = $this->attributes[$this->type]['rich_text'];
 
         $content = collect($children)->map(function ($raw) {
 

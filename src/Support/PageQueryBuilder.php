@@ -2,6 +2,7 @@
 
 namespace Ja\Notion\Support;
 
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Str;
 use Ja\Notion\Database;
 use Ja\Notion\Page;
@@ -26,9 +27,9 @@ class PageQueryBuilder
         $this->database = $database;
     }
 
-    public function cache(bool $value = true): self
+    public function ignoreCache(): self
     {
-        $this->cache = $value;
+        $this->cache = false;
         
         return $this;
     }
@@ -80,7 +81,7 @@ class PageQueryBuilder
         return $this;
     }
 
-    public function sortBy(string $propery, string $direction): self
+    public function sortBy(string $property, string $direction): self
     {
         $this->sorts[] = compact('property', 'direction');
 
@@ -96,14 +97,14 @@ class PageQueryBuilder
         $hasSorts   = count($this->sorts);
 
         if ($hasFilters) {
-            $query['filters'] = [];
+            $query['filter'] = [];
 
             if ($hasAnd) {
-                $query['filters']['and'] = $this->and;
+                $query['filter']['and'] = $this->and;
             }
 
             if ($hasOr) {
-                $query['filters']['or'] = $this->or;
+                $query['filter']['or'] = $this->or;
             }
         }
 
@@ -114,27 +115,27 @@ class PageQueryBuilder
         return $query;
     }
 
+    public function request(): Response
+    {
+        return (new Notion)->request(
+            endpoint: Page::endpoint(['databaseId' => $this->database->id]),
+            data: $this->buildQuery(),
+            method: 'post'
+        );
+    }
+
     public function first(): Page|null
     {
-        $database = $this->database;
-
-        $results = $database->api->get(
-            Page::endpoint(['databaseId' => $database->id]),
-            $this->buildQuery()
-        );
-
-        if ($result = $results[0] ?? false) {
-            return new Page($result, $database);
-        }
-
-        return null;
+        return $this->get()->first();
     }
 
     public function get(): Collection
     {
-        $results = $this->database->api->get(
-            Page::endpoint(['databaseId' => $this->database->id]),
-            $this->query
+        $results = (new Notion)->results(
+            endpoint: Page::endpoint(['databaseId' => $this->database->id]),
+            data: $this->buildQuery(),
+            method: 'post',
+            cache: $this->cache
         );
 
         $results = new Collection($results ?: []);

@@ -2,13 +2,8 @@
 
 namespace Ja\Notion\Objects;
 
-use Ja\Notion\Database;
-use Ja\Notion\Support\Collection;
-
-use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Str;
-use Ja\Notion\Exceptions\NotionException;
 use Ja\Notion\Objects\Traits\Findable;
 
 abstract class NotionObject
@@ -36,6 +31,13 @@ abstract class NotionObject
             }
         } catch (Exception $e) {
             //
+        }
+
+        if (
+            !isset($this->attributes[$name]) &&
+            method_exists(get_called_class(), $getMethod = 'get' . Str::ucfirst($name))
+        ) {
+            $this->attributes[$name] = $this->$getMethod();
         }
 
         return $this->attributes[$name] ?? null;

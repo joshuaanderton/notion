@@ -2,6 +2,7 @@
 
 namespace Ja\Notion\Support;
 
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -13,59 +14,53 @@ class Notion
 
     private string $version = '2022-06-28';
 
-    private array $methods = ['get', 'patch', 'post', 'delete'];
-
     public function __construct()
     {
         $this->token = env('NOTION_API_TOKEN', null);
     }
 
-    private function request(string $endpoint, array $data = [], string $method = null): array|null
+    public function results(string $endpoint, array $data = [], string $method = null, bool $cache = null): array|null
+    {
+        $getResults = fn () => $this->request($endpoint, $data, $method)['results'] ?? null;
+
+        // Check cache for results and set cache if none found
+        if ($cache === false) {
+            return $getResults();
+        }
+        
+        $cacheKey = base64_encode(json_encode([$endpoint, $data], true));
+
+        return Cache::get($cacheKey, function () use ($cacheKey, $getResults) {
+            $results = $getResults();
+            
+            if ($results !== null) {
+                Cache::put($cacheKey, $results);
+            }
+            
+            return $results;
+        });
+    }
+
+    public function request(string $endpoint, array $data = [], string $method = null): Response
     {
         if (!in_array($method, ['get', 'post', 'put', 'delete'])) {
             $method = 'get';
         }
 
         $headers = $this->headers();
+        
         $url = $this->endpoint($endpoint);
 
-        $getResponse = fn () => Http::withHeaders($headers)->$method($url, $data)['results'] ?? null;
-
-        // Check cache for results and set cache if none found
-        if ($this->cache) {
-            return Cache::get($endpoint, fn () => (
-                ($results = $getResponse()) !== null
-                    ? Cache::put($endpoint, $results)
-                    : null
-            ));
-        }
-
-        return $getResponse();
-    }
-
-    public function __call($name, $arguments)
-    {
-        if ($this->methodExists($method = $name)) {
-            list($endpoint, $data) = $arguments;
-
-            return $this->request($endpoint, $data, $method);
-        }
-
-        return null;
-    }
-
-    private function methodExists(string $method): bool
-    {
-        return in_array(strtolower($method), $this->methods);
+        return Http::withHeaders($headers)->$method($url, $data);
     }
     
-    private function headers(array $merge = []): array
+    private function headers(): array
     {
-        return array_merge([
+        return [
             'Authorization' => "Bearer {$this->token}",
             'Content-Type' => 'application/json',
             'Notion-Version' => $this->version,
-        ], $merge);
+        ];
     }
 
     private function endpoint(string $endpoint)
